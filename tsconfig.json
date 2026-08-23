@@ -1,0 +1,14 @@
+{
+  "files": [],
+  "references": [
+    { "path": "apps/web" },
+    { "path": "apps/worker" },
+    { "path": "packages/db" },
+    { "path": "packages/core" },
+    { "path": "packages/events" },
+    { "path": "packages/email" },
+    { "path": "packages/n8n" },
+    { "path": "packages/observability" },
+    { "path": "packages/alert" }
+  ]
+}

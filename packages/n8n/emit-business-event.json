@@ -1,0 +1,88 @@
+{
+  "id": "leadops-emit-business-event",
+  "name": "LeadOps - Emit Business Event",
+  "active": false,
+  "version": "1.1.0",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "subworkflow-trigger",
+      "name": "Called by LeadOps Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst input = $input.first().json;\nconst correlationId = String(input.correlationId || input.metadata?.correlationId || $execution.id);\nconst webhookId = String(input.webhookId || `leadops-${correlationId}`).replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 200);\nconst event = {\n  specVersion: '1.0',\n  eventId: input.eventId || crypto.randomUUID(),\n  eventType: input.eventType,\n  occurredAt: input.occurredAt || new Date().toISOString(),\n  source: input.source || 'n8n',\n  organizationId: $env.LEADOPS_ORGANIZATION_ID,\n  clientId: $env.LEADOPS_CLIENT_ID,\n  workflow: { id: $workflow.id, name: $workflow.name },\n  run: { id: $execution.id },\n  data: input.data || {},\n  metadata: { schemaVersion: '1.0', correlationId }\n};\nif (!event.eventType) throw new Error('eventType is required');\nreturn [{ json: { event, webhookId } }];"
+      },
+      "id": "build-event",
+      "name": "Build Event Envelope",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [420, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst item = $input.first().json;\nconst secret = $env.LEADOPS_WEBHOOK_SECRET;\nif (!secret) throw new Error('LEADOPS_WEBHOOK_SECRET is required');\nconst timestamp = String(Math.floor(Date.now() / 1000));\nconst rawBody = JSON.stringify(item.event);\nconst encoded = secret.startsWith('whsec_') ? secret.slice(6) : secret;\nconst signature = crypto.createHmac('sha256', Buffer.from(encoded, 'base64'))\n  .update(`${item.webhookId}.${timestamp}.${rawBody}`)\n  .digest('base64');\nreturn [{ json: { rawBody, webhookId: item.webhookId, timestamp, signature: `v1,${signature}` } }];"
+      },
+      "id": "sign-event",
+      "name": "Sign Without Exposing Secret",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [640, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.LEADOPS_API_URL + '/api/v1/events' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "content-type", "value": "application/json" },
+            { "name": "x-leadops-integration-id", "value": "={{ $env.LEADOPS_INTEGRATION_ID }}" },
+            { "name": "webhook-id", "value": "={{ $json.webhookId }}" },
+            { "name": "webhook-timestamp", "value": "={{ $json.timestamp }}" },
+            { "name": "webhook-signature", "value": "={{ $json.signature }}" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.rawBody }}",
+        "options": { "timeout": 30000 }
+      },
+      "id": "send-event",
+      "name": "Send to LeadOps API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [860, 300],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const value = $input.first().json;\nreturn [{ json: { errorName: 'LeadOpsPublishError', errorCode: 'PORTAL_DELIVERY_FAILED', statusCode: Number(value.statusCode || 0), message: String(value.message || 'Portal event delivery failed').slice(0, 300) } }];"
+      },
+      "id": "sanitize-failure",
+      "name": "Sanitize Delivery Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1080, 460]
+    }
+  ],
+  "connections": {
+    "Called by LeadOps Workflow": { "main": [[{ "node": "Build Event Envelope", "type": "main", "index": 0 }]] },
+    "Build Event Envelope": { "main": [[{ "node": "Sign Without Exposing Secret", "type": "main", "index": 0 }]] },
+    "Sign Without Exposing Secret": { "main": [[{ "node": "Send to LeadOps API", "type": "main", "index": 0 }]] },
+    "Send to LeadOps API": { "main": [[], [{ "node": "Sanitize Delivery Failure", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "callerPolicy": "workflowsFromSameOwner",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "executionProgress": false
+  }
+}

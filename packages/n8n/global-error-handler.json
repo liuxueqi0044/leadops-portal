@@ -1,0 +1,204 @@
+{
+  "id": "leadops-global-error-handler",
+  "name": "LeadOps - Global Error Handler",
+  "active": false,
+  "version": "1.1.0",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "subworkflow-trigger",
+      "name": "Called on Workflow Error",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [50, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Global error handler — receives errors from all workflows\n// Collects and normalizes error data without leaking secrets\nconst error = $input.item.json;\n\nconst safeError = {\n  workflowId: $workflow.id,\n  executionId: $execution.id,\n  timestamp: new Date().toISOString(),\n  errorName: error.name || error.errorName || 'UnknownError',\n  errorMessage: (error.message || error.errorMessage || 'Unknown error').substring(0, 500),\n  errorCode: error.code || error.errorCode || 'UNKNOWN',\n  nodeName: error.node || error.nodeName || 'unknown',\n  // NEVER include: secrets, API keys, tokens, full request bodies\n};\n\nreturn { json: safeError };"
+      },
+      "id": "normalize-error",
+      "name": "Normalize Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "looseTypeComparison": true
+          },
+          "string": [
+            {
+              "value1": "={{ $json.errorName }}",
+              "operation": "regex",
+              "value2": "DuplicateLeadError"
+            }
+          ]
+        }
+      },
+      "id": "check-duplicate",
+      "name": "Is Duplicate Error?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Duplicate lead — non-critical, just log and continue\nreturn {\n  json: {\n    severity: 'info',\n    category: 'duplicate',\n    action: 'skip',\n    ...$input.item.json\n  }\n};"
+      },
+      "id": "handle-duplicate",
+      "name": "Handle Duplicate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.errorCode }}",
+              "operation": "regex",
+              "value2": "^(AI_|QUALIFICATION_|SCHEMA_)"
+            }
+          ]
+        }
+      },
+      "id": "check-ai-error",
+      "name": "Is AI Error?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// AI / Qualification failure — route to manual review\nreturn {\n  json: {\n    severity: 'warning',\n    category: 'ai_failure',\n    action: 'manual_review',\n    ...$input.item.json\n  }\n};"
+      },
+      "id": "handle-ai-error",
+      "name": "Handle AI Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.statusCode }}",
+              "operation": "between",
+              "value2": 500,
+              "value3": 599
+            }
+          ]
+        }
+      },
+      "id": "check-crm-error",
+      "name": "Is CRM/Server Error?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [650, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// CRM/Integration failure — needs retry or escalation\nreturn {\n  json: {\n    severity: 'error',\n    category: 'integration_failure',\n    action: 'retry_with_backoff',\n    ...$input.item.json\n  }\n};"
+      },
+      "id": "handle-crm-error",
+      "name": "Handle CRM Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Unknown error — log and alert\nreturn {\n  json: {\n    severity: 'critical',\n    category: 'unknown',\n    action: 'alert_operator',\n    ...$input.item.json\n  }\n};"
+      },
+      "id": "handle-unknown",
+      "name": "Handle Unknown Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 500]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Store error in persistent log (stub — replace with DB write)\nconst error = $input.item.json;\n\n// Format for storage — no secrets, no full payloads\nconst logEntry = {\n  timestamp: error.timestamp,\n  workflowId: error.workflowId,\n  executionId: error.executionId,\n  severity: error.severity,\n  category: error.category,\n  action: error.action,\n  errorName: error.errorName,\n  errorMessage: error.errorMessage,\n  errorCode: error.errorCode,\n};\n\nreturn { json: logEntry };"
+      },
+      "id": "log-error",
+      "name": "Log Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1050, 350]
+    },
+    {
+      "parameters": {
+        "jsCode": "const error = $input.first().json;\nreturn [{ json: { eventType: 'workflow.run.failed', correlationId: error.executionId, webhookId: `workflow-failed-${error.executionId}`, data: { error: { code: error.errorCode, category: error.category, retryable: error.action === 'retry_with_backoff' } } } }];"
+      },
+      "id": "build-failure-event",
+      "name": "Build Safe Failure Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1250, 350]
+    },
+    {
+      "parameters": { "workflowId": "leadops-emit-business-event" },
+      "id": "emit-failure-event",
+      "name": "Emit Workflow Failed",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [1450, 350]
+    }
+  ],
+  "connections": {
+    "Called on Workflow Error": {
+      "main": [[{ "node": "Normalize Error", "type": "main", "index": 0 }]]
+    },
+    "Normalize Error": {
+      "main": [[
+        { "node": "Is Duplicate Error?", "type": "main", "index": 0 }
+      ]]
+    },
+    "Is Duplicate Error?": {
+      "main": [
+        [ { "node": "Handle Duplicate", "type": "main", "index": 0 } ],
+        [ { "node": "Is AI Error?", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Is AI Error?": {
+      "main": [
+        [ { "node": "Handle AI Error", "type": "main", "index": 0 } ],
+        [ { "node": "Is CRM/Server Error?", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Is CRM/Server Error?": {
+      "main": [
+        [ { "node": "Handle CRM Error", "type": "main", "index": 0 } ],
+        [ { "node": "Handle Unknown Error", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Handle Duplicate": {
+      "main": [[ { "node": "Log Error", "type": "main", "index": 0 } ]]
+    },
+    "Handle AI Error": {
+      "main": [[ { "node": "Log Error", "type": "main", "index": 0 } ]]
+    },
+    "Handle CRM Error": {
+      "main": [[ { "node": "Log Error", "type": "main", "index": 0 } ]]
+    },
+    "Handle Unknown Error": {
+      "main": [[ { "node": "Log Error", "type": "main", "index": 0 } ]]
+    },
+    "Log Error": {
+      "main": [[{ "node": "Build Safe Failure Event", "type": "main", "index": 0 }]]
+    },
+    "Build Safe Failure Event": {
+      "main": [[{ "node": "Emit Workflow Failed", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "callerPolicy": "workflowsFromSameOwner",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "executionProgress": false
+  }
+}

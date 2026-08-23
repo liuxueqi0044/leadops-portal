@@ -1,0 +1,145 @@
+{
+  "id": "leadops-request-human-approval",
+  "name": "LeadOps - Request Human Approval",
+  "active": false,
+  "version": "1.1.0",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "subworkflow-trigger",
+      "name": "Called by Qualification Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [180, 220]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst lead = $input.first().json;\nconst correlationId = String(lead.correlationId || lead.metadata?.correlationId || $execution.id);\nconst request = {\n  clientId: $env.LEADOPS_CLIENT_ID,\n  integrationId: $env.LEADOPS_INTEGRATION_ID,\n  correlationId,\n  requestVersion: '1',\n  snapshot: {\n    ...(lead.leadId && /^[0-9a-f-]{36}$/i.test(lead.leadId) ? { leadId: lead.leadId } : {}),\n    contactName: lead.contactName || null,\n    company: lead.company || null,\n    message: lead.message || null,\n    score: Number.isInteger(lead.qualification?.score) ? lead.qualification.score : null,\n    qualificationSummary: lead.qualification?.summary || null,\n    qualificationDecision: lead.qualification?.decision || null,\n    suggestedNextAction: lead.qualification?.suggestedNextAction || null\n  },\n  expiresInSeconds: 604800,\n  generateToken: true\n};\nconst rawBody = JSON.stringify(request);\nconst webhookId = `approval-${correlationId}`.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 200);\nconst timestamp = String(Math.floor(Date.now() / 1000));\nconst secret = $env.LEADOPS_WEBHOOK_SECRET;\nif (!secret) throw new Error('LEADOPS_WEBHOOK_SECRET is required');\nconst encoded = secret.startsWith('whsec_') ? secret.slice(6) : secret;\nconst signature = crypto.createHmac('sha256', Buffer.from(encoded, 'base64'))\n  .update(`${webhookId}.${timestamp}.${rawBody}`).digest('base64');\nreturn [{ json: { rawBody, webhookId, timestamp, signature: `v1,${signature}` } }];"
+      },
+      "id": "build-request",
+      "name": "Build and Sign Approval Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [410, 220]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.LEADOPS_API_URL + '/api/v1/approvals' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "content-type", "value": "application/json" },
+            { "name": "x-leadops-integration-id", "value": "={{ $env.LEADOPS_INTEGRATION_ID }}" },
+            { "name": "webhook-id", "value": "={{ $json.webhookId }}" },
+            { "name": "webhook-timestamp", "value": "={{ $json.timestamp }}" },
+            { "name": "webhook-signature", "value": "={{ $json.signature }}" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.rawBody }}",
+        "options": { "timeout": 30000 }
+      },
+      "id": "create-approval",
+      "name": "Create Approval in Portal",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [650, 220],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 1000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.first().json;\nreturn [{ json: { approvalId: response.id, status: response.status, expiresAt: response.expiresAt, publicApprovalUrl: response.token ? `${$env.LEADOPS_PORTAL_URL}/approval/public/${response.token}` : null } }];"
+      },
+      "id": "return-pending",
+      "name": "Return Pending Approval",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 160]
+    },
+    {
+      "parameters": {
+        "jsCode": "const value = $input.first().json;\nreturn [{ json: { errorName: 'ApprovalRequestError', errorCode: 'APPROVAL_REQUEST_FAILED', statusCode: Number(value.statusCode || 0), message: String(value.message || 'Approval request failed').slice(0, 300) } }];"
+      },
+      "id": "sanitize-create-failure",
+      "name": "Sanitize Approval Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 320]
+    },
+    {
+      "parameters": { "workflowId": "leadops-global-error-handler" },
+      "id": "error-handler",
+      "name": "Report to Error Handler",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [1140, 320]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "leadops-approval-callback",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "callback-webhook",
+      "name": "Approval Callback Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [180, 620],
+      "webhookId": "leadops-approval-callback"
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst input = $input.first().json;\nconst headers = input.headers || {};\nconst body = input.body || input;\nconst webhookId = String(headers['webhook-id'] || '');\nconst timestamp = String(headers['webhook-timestamp'] || '');\nconst received = String(headers['webhook-signature'] || '');\nif (!webhookId || !/^\\d{1,12}$/.test(timestamp) || Math.abs(Date.now() - Number(timestamp) * 1000) > 300000) throw new Error('Invalid callback timestamp');\nconst secret = $env.LEADOPS_WEBHOOK_SECRET;\nconst encoded = secret.startsWith('whsec_') ? secret.slice(6) : secret;\nconst rawBody = JSON.stringify(body);\nconst expected = `v1,${crypto.createHmac('sha256', Buffer.from(encoded, 'base64')).update(`${webhookId}.${timestamp}.${rawBody}`).digest('base64')}`;\nconst a = Buffer.from(received); const b = Buffer.from(expected);\nif (a.length !== b.length || !crypto.timingSafeEqual(a, b)) throw new Error('Invalid callback signature');\nreturn [{ json: body }];"
+      },
+      "id": "verify-callback",
+      "name": "Verify Callback Signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [410, 620]
+    },
+    {
+      "parameters": {
+        "jsCode": "const approval = $input.first().json;\nconst approved = approval.status === 'approved';\nreturn [{ json: { approvalId: approval.approvalId, status: approval.status, adapterPlan: approved ? { crm: 'create_deal', calendar: 'schedule_follow_up', email: 'send_approved' } : { crm: 'no_high_risk_action', calendar: 'none', email: 'send_rejected' } } }];"
+      },
+      "id": "process-result",
+      "name": "CRM Calendar Email Adapter Boundary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [650, 620]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { accepted: true, approvalId: $json.approvalId } }}",
+        "options": { "responseCode": 202 }
+      },
+      "id": "respond-callback",
+      "name": "Acknowledge Callback",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [900, 620]
+    }
+  ],
+  "connections": {
+    "Called by Qualification Workflow": { "main": [[{ "node": "Build and Sign Approval Request", "type": "main", "index": 0 }]] },
+    "Build and Sign Approval Request": { "main": [[{ "node": "Create Approval in Portal", "type": "main", "index": 0 }]] },
+    "Create Approval in Portal": { "main": [[{ "node": "Return Pending Approval", "type": "main", "index": 0 }], [{ "node": "Sanitize Approval Failure", "type": "main", "index": 0 }]] },
+    "Sanitize Approval Failure": { "main": [[{ "node": "Report to Error Handler", "type": "main", "index": 0 }]] },
+    "Approval Callback Webhook": { "main": [[{ "node": "Verify Callback Signature", "type": "main", "index": 0 }]] },
+    "Verify Callback Signature": { "main": [[{ "node": "CRM Calendar Email Adapter Boundary", "type": "main", "index": 0 }]] },
+    "CRM Calendar Email Adapter Boundary": { "main": [[{ "node": "Acknowledge Callback", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "callerPolicy": "workflowsFromSameOwner",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "executionProgress": false
+  }
+}

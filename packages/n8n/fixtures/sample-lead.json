@@ -1,0 +1,16 @@
+{
+  "source": "website",
+  "externalId": "sample-lead-001",
+  "contactName": "Sample Buyer",
+  "email": "buyer@example.com",
+  "company": "Example Co",
+  "message": "Please contact me about the enterprise plan.",
+  "qualificationFixture": {
+    "score": 92,
+    "decision": "qualified",
+    "summary": "Strong declared enterprise intent",
+    "suggestedNextAction": "book_call",
+    "confidence": 0.94,
+    "riskFlags": []
+  }
+}

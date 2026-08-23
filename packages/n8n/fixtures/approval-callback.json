@@ -1,0 +1,9 @@
+{
+  "eventType": "approval.completed",
+  "approvalId": "00000000-0000-4000-8000-000000000010",
+  "status": "approved",
+  "decision": "approved",
+  "decidedBy": "sample-user",
+  "decidedAt": "2026-08-09T00:00:00.000Z",
+  "version": 2
+}

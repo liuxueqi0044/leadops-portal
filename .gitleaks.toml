@@ -1,0 +1,14 @@
+title = "LeadOps Portal portfolio secret scanning"
+
+[extend]
+useDefault = true
+
+# These exact tests contain synthetic credentials in order to exercise signing,
+# configuration, and redaction behavior. They are not deployable credentials.
+[[allowlists]]
+description = "Known non-secret test fixtures"
+paths = [
+  '''(^|/)apps/web/src/api\.integration\.test\.ts$''',
+  '''(^|/)packages/events/src/signing\.test\.ts$''',
+  '''(^|/)packages/observability/src/index\.test\.ts$'''
+]

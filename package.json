@@ -1,0 +1,39 @@
+{
+  "name": "leadops-portal",
+  "version": "0.0.0",
+  "private": true,
+  "description": "LeadOps Portal — multi-tenant lead operations and human approval portal for n8n automation agencies",
+  "scripts": {
+    "predev": "pnpm -r --filter \"./packages/*\" build",
+    "dev": "pnpm predev && pnpm --parallel -r dev",
+    "build": "pnpm -r build",
+    "db:migrate": "pnpm --filter @leadops/db migrate",
+    "lint": "eslint . --max-warnings=0",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "test:db": "pnpm --filter @leadops/db... build && vitest run --config vitest.db.config.ts",
+    "test:integration": "pnpm build && vitest run --config vitest.integration.config.ts",
+    "test:e2e": "pnpm build && vitest run --config vitest.e2e.config.ts",
+    "accept:phase3": "node acceptance/phase-3.mjs",
+    "accept:phase4": "node acceptance/phase-4.mjs",
+    "accept:phase5": "node acceptance/phase-5.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.38.0",
+    "@next/eslint-plugin-next": "15.5.22",
+    "@types/node": "^22.19.0",
+    "eslint": "^9.38.0",
+    "eslint-config-prettier": "^10.1.0",
+    "globals": "^16.5.0",
+    "postgres": "^3.4.9",
+    "prettier": "^3.6.0",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.48.0",
+    "vitest": "^3.2.0"
+  },
+  "engines": {
+    "node": ">=22",
+    "pnpm": ">=9"
+  },
+  "packageManager": "pnpm@11.18.0"
+}

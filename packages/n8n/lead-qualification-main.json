@@ -1,0 +1,146 @@
+{
+  "id": "leadops-lead-qualification-main",
+  "name": "LeadOps - Lead Qualification Main",
+  "active": false,
+  "version": "1.1.0",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "leadops-lead-qualification",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Lead Input",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [100, 300],
+      "webhookId": "leadops-lead-qualification"
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst raw = $input.first().json.body || $input.first().json;\nif (!raw || typeof raw !== 'object') throw new Error('Lead payload must be an object');\nconst text = (value, max) => typeof value === 'string' ? value.trim().slice(0, max) : '';\nconst lead = {\n  source: text(raw.source, 100) || 'web_form',\n  externalId: text(raw.externalId, 200) || null,\n  contactName: text(raw.contactName, 200) || null,\n  email: text(raw.email, 320).toLowerCase() || null,\n  phone: text(raw.phone, 50).replace(/[^\\d+]/g, '') || null,\n  company: text(raw.company, 200) || null,\n  message: text(raw.message, 5000) || null,\n  qualificationFixture: raw.qualificationFixture && typeof raw.qualificationFixture === 'object' ? raw.qualificationFixture : null\n};\nif (!lead.contactName && !lead.email && !lead.phone) throw new Error('At least one contact field is required');\nconst identity = lead.externalId || lead.email || lead.phone;\nconst digest = crypto.createHash('sha256').update(`${lead.source}|${identity}`).digest('hex').slice(0, 32);\nreturn [{ json: { ...lead, correlationId: `lead-${digest}`, webhookId: `lead-${digest}` } }];"
+      },
+      "id": "validate-normalize",
+      "name": "Validate Normalize and Redact",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [330, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead = $input.first().json;\nreturn [{ json: { ...lead, dedupeKey: lead.webhookId } }];"
+      },
+      "id": "dedupe-key",
+      "name": "Stable Portal Dedupe Key",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [560, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead = $input.first().json;\nconst candidate = lead.qualificationFixture;\nconst decisions = new Set(['qualified', 'needs_review', 'disqualified']);\nconst actions = new Set(['request_approval', 'book_call', 'send_nurture', 'discard']);\nconst valid = candidate && Number.isInteger(candidate.score) && candidate.score >= 0 && candidate.score <= 100 && decisions.has(candidate.decision) && typeof candidate.summary === 'string' && actions.has(candidate.suggestedNextAction);\nconst qualification = valid ? { score: candidate.score, decision: candidate.decision, summary: candidate.summary.slice(0, 500), confidence: Math.max(0, Math.min(1, Number(candidate.confidence || 0))), riskFlags: Array.isArray(candidate.riskFlags) ? candidate.riskFlags.slice(0, 20) : [], suggestedNextAction: candidate.suggestedNextAction } : { score: 50, decision: 'needs_review', summary: 'AI adapter is unconfigured or returned invalid structured output', confidence: 0, riskFlags: ['ai_adapter_review_required'], suggestedNextAction: 'request_approval' };\nreturn [{ json: { ...lead, qualification, aiFallback: !valid } }];"
+      },
+      "id": "ai-qualification",
+      "name": "AI Structured Qualification Adapter Boundary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [790, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead = $input.first().json;\nreturn [{ json: { eventType: 'lead.received', correlationId: lead.correlationId, webhookId: lead.webhookId, data: { lead: { id: lead.externalId, source: lead.source, contactName: lead.contactName, email: lead.email, phone: lead.phone, company: lead.company, message: lead.message } } } }];"
+      },
+      "id": "build-lead-event",
+      "name": "Build Lead Received Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1020, 300]
+    },
+    {
+      "parameters": { "workflowId": "leadops-emit-business-event" },
+      "id": "emit-event",
+      "name": "Emit Lead Received",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "typeValidation": "strict" },
+          "conditions": [{
+            "leftValue": "={{ $('AI Structured Qualification Adapter Boundary').item.json.qualification.decision }}",
+            "rightValue": "disqualified",
+            "operator": { "type": "string", "operation": "notEquals" }
+          }],
+          "combinator": "and"
+        }
+      },
+      "id": "requires-approval",
+      "name": "Requires Human Approval",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1480, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead = $('AI Structured Qualification Adapter Boundary').item.json;\nreturn [{ json: { ...lead, correlationId: lead.correlationId } }];"
+      },
+      "id": "approval-context",
+      "name": "Prepare Immutable Approval Snapshot",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1710, 200]
+    },
+    {
+      "parameters": { "workflowId": "leadops-request-human-approval" },
+      "id": "request-approval",
+      "name": "Request Human Approval Asynchronously",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [1940, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const lead = $('AI Structured Qualification Adapter Boundary').item.json;\nreturn [{ json: { status: 'disqualified', correlationId: lead.correlationId, highRiskActionTaken: false } }];"
+      },
+      "id": "no-risk-action",
+      "name": "Disqualified No High Risk Action",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1940, 410]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { accepted: true, status: $json.status, approvalId: $json.approvalId || null } }}",
+        "options": { "responseCode": 202 }
+      },
+      "id": "respond",
+      "name": "Respond Accepted",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [2180, 300]
+    }
+  ],
+  "connections": {
+    "Webhook Lead Input": { "main": [[{ "node": "Validate Normalize and Redact", "type": "main", "index": 0 }]] },
+    "Validate Normalize and Redact": { "main": [[{ "node": "Stable Portal Dedupe Key", "type": "main", "index": 0 }]] },
+    "Stable Portal Dedupe Key": { "main": [[{ "node": "AI Structured Qualification Adapter Boundary", "type": "main", "index": 0 }]] },
+    "AI Structured Qualification Adapter Boundary": { "main": [[{ "node": "Build Lead Received Event", "type": "main", "index": 0 }]] },
+    "Build Lead Received Event": { "main": [[{ "node": "Emit Lead Received", "type": "main", "index": 0 }]] },
+    "Emit Lead Received": { "main": [[{ "node": "Requires Human Approval", "type": "main", "index": 0 }]] },
+    "Requires Human Approval": { "main": [[{ "node": "Prepare Immutable Approval Snapshot", "type": "main", "index": 0 }], [{ "node": "Disqualified No High Risk Action", "type": "main", "index": 0 }]] },
+    "Prepare Immutable Approval Snapshot": { "main": [[{ "node": "Request Human Approval Asynchronously", "type": "main", "index": 0 }]] },
+    "Request Human Approval Asynchronously": { "main": [[{ "node": "Respond Accepted", "type": "main", "index": 0 }]] },
+    "Disqualified No High Risk Action": { "main": [[{ "node": "Respond Accepted", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "errorWorkflow": "leadops-global-error-handler",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "executionProgress": false
+  }
+}

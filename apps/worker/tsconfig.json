@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "paths": {
+      "@leadops/core": ["../../packages/core/src/index.ts"],
+      "@leadops/db/client": ["../../packages/db/src/client.ts"],
+      "@leadops/db/env": ["../../packages/db/src/env.ts"],
+      "@leadops/db": ["../../packages/db/src/index.ts"],
+      "@leadops/alert": ["../../packages/alert/src/index.ts"],
+      "@leadops/observability": ["../../packages/observability/src/index.ts"]
+    }
+  },
+  "include": ["src"]
+}

@@ -1,0 +1,6 @@
+{
+  "errorName": "AdapterTimeout",
+  "errorCode": "CRM_TIMEOUT",
+  "statusCode": 503,
+  "message": "CRM adapter timed out"
+}
