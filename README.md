@@ -16,7 +16,7 @@ A multi-tenant operations portal for automation agencies: capture leads, qualify
 
 ## What I owned
 
-I independently defined the product, designed the architecture and data boundaries, decomposed the implementation, directed AI coding agents as an engineering execution system, reviewed the code, designed the acceptance strategy, and delivered the final system.
+I independently defined the product, designed the architecture and data boundaries, planned the implementation, reviewed the code, designed the acceptance strategy, and owned the final delivery.
 
 The project demonstrates the ability to move from a business workflow to a cohesive product: multi-tenancy, signed ingestion, qualification, approvals, automation callbacks, incident operations, observability, testing, and deployment.
 
@@ -98,7 +98,6 @@ See [`docs/architecture/leadops-saas-architecture.md`](docs/architecture/leadops
 - Screenshots use synthetic demonstration data.
 - Provider credentials and production infrastructure are not included.
 - Production use requires independent security, compliance, deliverability, and operational review.
-- AI agents were used as implementation tools under human architecture, review, testing, and acceptance.
 
 ## Source terms
 
