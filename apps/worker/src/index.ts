@@ -413,6 +413,8 @@ const telemetryReady = initTelemetry({
 
 telemetryReady.then(async () => {
   await runtime.start();
+  if (shuttingDown) return;
+
   boss = new PgBoss({
     connectionString: workerDatabaseUrl,
     schema: pgBossSchema,
@@ -507,6 +509,14 @@ telemetryReady.then(async () => {
   weeklyReportScheduler.start();
   retentionScheduler.start();
 }).catch((err: unknown) => {
+  if (shuttingDown) {
+    logger.info(
+      { event: "worker.start_cancelled" },
+      "Worker startup cancelled during shutdown",
+    );
+    return;
+  }
+
   const message = err instanceof Error ? err.message : String(err);
   logger.error(
     { event: "worker.fatal", error: message },
