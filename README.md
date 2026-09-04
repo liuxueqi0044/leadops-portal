@@ -1,8 +1,15 @@
 # LeadOps Portal
 
-A multi-tenant operations portal for automation agencies: capture leads, qualify opportunities, request human approval, run workflows, surface incidents, and report results from one control plane.
+LeadOps Portal runs the complete operational path from an incoming lead to qualification, human approval, automated execution, incident recovery, and reporting in one multi-tenant control plane.
 
-> Portfolio snapshot. The included data is synthetic, and this repository does not claim a live production deployment or real customer revenue.
+It gives an automation agency one place to see what entered the system, what needs a decision, what ran, what failed, and what recovered—without losing tenant boundaries or trusting unreliable callbacks.
+
+**Why it matters**
+
+- Duplicate or replayed events do not create duplicate work.
+- Automation cannot silently bypass a required human decision.
+- Failed jobs become visible incidents with retry and recovery paths.
+- Tenant context stays attached from request handling through persistence and background execution.
 
 ![LeadOps overview dashboard](media/01-overview-dashboard.png)
 
@@ -14,11 +21,9 @@ A multi-tenant operations portal for automation agencies: capture leads, qualify
 | -------------------------------------------------- | ---------------------------------------------- |
 | ![Automation operations](media/05-automations.png) | ![Incident management](media/06-incidents.png) |
 
-## What I owned
+## End-to-end ownership
 
-I independently defined the product, designed the architecture and data boundaries, planned the implementation, reviewed the code, designed the acceptance strategy, and owned the final delivery.
-
-The project demonstrates the ability to move from a business workflow to a cohesive product: multi-tenancy, signed ingestion, qualification, approvals, automation callbacks, incident operations, observability, testing, and deployment.
+I independently defined the product, designed the architecture and data boundaries, planned and reviewed the implementation, designed the acceptance strategy, and owned final delivery from requirements to a verified system.
 
 ## System highlights
 
