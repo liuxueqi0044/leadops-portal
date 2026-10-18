@@ -1,6 +1,7 @@
 {
   "name": "leadops-portal",
   "version": "0.0.0",
+  "license": "MIT",
   "private": true,
   "description": "LeadOps Portal — multi-tenant lead operations and human approval portal for n8n automation agencies",
   "scripts": {

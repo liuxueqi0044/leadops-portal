@@ -104,6 +104,6 @@ See [`docs/architecture/leadops-saas-architecture.md`](docs/architecture/leadops
 - Provider credentials and production infrastructure are not included.
 - Production use requires independent security, compliance, deliverability, and operational review.
 
-## Source terms
+## License
 
-The project code is shared for portfolio evaluation and technical review. It is not offered under an open-source license. Third-party packages retain their own licenses; see [`docs/open-source-inventory.md`](docs/open-source-inventory.md) and [`LICENSE`](LICENSE).
+The original project code is licensed under the [MIT License](LICENSE). Third-party packages retain their own licenses; see [OPEN_SOURCE.md](OPEN_SOURCE.md) and the [dependency inventory](docs/open-source-inventory.md).
