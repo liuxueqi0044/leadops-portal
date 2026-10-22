@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import {
   Activity,
@@ -8,9 +8,11 @@ import {
   Building2,
   CheckSquare2,
   ChevronDown,
+  ChevronRight,
   FileChartColumn,
   Inbox,
   LayoutDashboard,
+  MoreHorizontal,
   Search,
   Settings2,
   ShieldAlert,
@@ -21,6 +23,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import type { MeResponse } from '@leadops/core';
 import type { ProductSection } from '@/lib/product/types';
+import { useDialogFocus } from './use-dialog-focus';
 
 interface NavigationItem {
   label: string;
@@ -43,9 +46,11 @@ const agencyNavigation: NavigationItem[] = [
   { label: 'Settings', section: 'settings', icon: Settings2 },
 ];
 
-function BrandMark() {
+const mobileSections: ProductSection[] = ['overview', 'leads', 'approvals', 'incidents'];
+
+function BrandMark({ clientId }: { clientId: string }) {
   return (
-    <Link className="brand" href="/?section=overview" aria-label="LeadOps overview">
+    <Link className="brand" href={buildHref('overview', clientId)} aria-label="LeadOps overview">
       <span className="brand-mark" aria-hidden="true">
         <Activity size={18} strokeWidth={2.4} />
       </span>
@@ -103,6 +108,9 @@ function ClientBoundary({ me, selectedClientId }: { me: MeResponse; selectedClie
   function switchClient(clientId: string) {
     const params = new URLSearchParams(searchParams.toString());
     params.set('client', clientId);
+    params.delete('lead');
+    params.delete('approval');
+    params.delete('incident');
     router.push(`${pathname}?${params.toString()}`);
   }
 
@@ -144,23 +152,46 @@ function ClientBoundary({ me, selectedClientId }: { me: MeResponse; selectedClie
 function TopBar({
   me,
   selectedClientId,
+  activeSection,
+  openIncidents,
   onSearchOpen,
 }: {
   me: MeResponse;
   selectedClientId: string;
+  activeSection: ProductSection;
+  openIncidents: number;
   onSearchOpen: () => void;
 }) {
+  const activeItem = [...workspaceNavigation, ...agencyNavigation].find(
+    (item) => item.section === activeSection,
+  );
+
   return (
     <header className="topbar">
-      <div className="topbar-mobile-brand">
-        <BrandMark />
+      <div className="topbar-context">
+        <div className="topbar-mobile-brand">
+          <BrandMark clientId={selectedClientId} />
+        </div>
+        <nav className="topbar-breadcrumb" aria-label="Breadcrumb">
+          <span>
+            {agencyNavigation.some((item) => item.section === activeSection)
+              ? 'Agency'
+              : 'Workspace'}
+          </span>
+          <ChevronRight size={13} aria-hidden="true" />
+          <strong className="topbar-section" aria-current="page">
+            {activeItem?.label ?? 'Overview'}
+          </strong>
+        </nav>
       </div>
       <ClientBoundary me={me} selectedClientId={selectedClientId} />
       <div className="topbar-actions">
         <button
           className="search-button"
           type="button"
-          aria-label="Search workspace"
+          aria-label="Search workspace pages"
+          aria-haspopup="dialog"
+          aria-keyshortcuts="Meta+K Control+K"
           onClick={onSearchOpen}
         >
           <Search size={17} aria-hidden="true" />
@@ -170,10 +201,10 @@ function TopBar({
         <a
           className="icon-button notification-button"
           href={buildHref('incidents', selectedClientId)}
-          aria-label="Open incident notifications"
+          aria-label={`${String(openIncidents)} open ${openIncidents === 1 ? 'incident' : 'incidents'}. View incidents`}
         >
           <Bell size={18} aria-hidden="true" />
-          <span className="notification-dot" aria-label="1 unread notification" />
+          {openIncidents > 0 ? <span className="notification-dot" aria-hidden="true" /> : null}
         </a>
         <div className="profile-button" aria-label={`Signed in as ${me.user.name}`}>
           <span className="profile-avatar">
@@ -198,12 +229,15 @@ function SearchDialog({
   clientId,
   clientLevel,
   onClose,
+  openerRef,
 }: {
   clientId: string;
   clientLevel: boolean;
   onClose: () => void;
+  openerRef: RefObject<HTMLElement | null>;
 }) {
   const [query, setQuery] = useState('');
+  const dialogRef = useDialogFocus(onClose, openerRef);
   const items = clientLevel ? workspaceNavigation : [...workspaceNavigation, ...agencyNavigation];
   const matches = items.filter((item) =>
     item.label.toLowerCase().includes(query.trim().toLowerCase()),
@@ -218,8 +252,10 @@ function SearchDialog({
       }}
     >
       <section
+        ref={dialogRef}
         className="command-dialog"
         role="dialog"
+        tabIndex={-1}
         aria-modal="true"
         aria-labelledby="command-title"
       >
@@ -230,7 +266,9 @@ function SearchDialog({
               Search workspace pages
             </span>
             <input
-              autoFocus
+              data-dialog-autofocus
+              type="search"
+              autoComplete="off"
               value={query}
               onChange={(event) => {
                 setQuery(event.target.value);
@@ -256,13 +294,94 @@ function SearchDialog({
               </small>
             </a>
           ))}
-          {matches.length === 0 ? <p>No matching page</p> : null}
+          {matches.length === 0 ? <p role="status">No matching page</p> : null}
         </div>
         <footer className="command-footer">
-          <span>Navigate with the keyboard</span>
+          <span>Tab to navigate · Enter to open</span>
           <kbd>Esc</kbd>
           <span>to close</span>
         </footer>
+      </section>
+    </div>
+  );
+}
+
+function MobileNavigationDialog({
+  clientId,
+  activeSection,
+  workspaceItems,
+  clientLevel,
+  onClose,
+  openerRef,
+}: {
+  clientId: string;
+  activeSection: ProductSection;
+  workspaceItems: NavigationItem[];
+  clientLevel: boolean;
+  onClose: () => void;
+  openerRef: RefObject<HTMLElement | null>;
+}) {
+  const dialogRef = useDialogFocus(onClose, openerRef);
+  const groups = [
+    { label: 'Workspace', items: workspaceItems },
+    ...(!clientLevel ? [{ label: 'Agency', items: agencyNavigation }] : []),
+  ];
+
+  return (
+    <div
+      className="command-backdrop mobile-menu-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.currentTarget === event.target) onClose();
+      }}
+    >
+      <section
+        ref={dialogRef}
+        id="mobile-workspace-menu"
+        className="mobile-menu-dialog"
+        role="dialog"
+        tabIndex={-1}
+        aria-modal="true"
+        aria-labelledby="mobile-menu-title"
+        aria-describedby="mobile-menu-description"
+      >
+        <header className="mobile-menu-header">
+          <div>
+            <h2 id="mobile-menu-title">Your workspace</h2>
+            <p className="mobile-menu-description" id="mobile-menu-description">
+              Move between your operations and tools.
+            </p>
+          </div>
+          <button
+            className="icon-button"
+            type="button"
+            onClick={onClose}
+            aria-label="Close navigation"
+          >
+            <X size={19} aria-hidden="true" />
+          </button>
+        </header>
+        <nav className="mobile-menu-navigation" aria-label="All workspace pages">
+          {groups.map((group) => (
+            <div className="mobile-menu-section" key={group.label}>
+              <p className="nav-label">{group.label}</p>
+              {group.items.map(({ label, section, icon: Icon, count }) => (
+                <a
+                  key={section}
+                  href={buildHref(section, clientId)}
+                  onClick={onClose}
+                  aria-current={activeSection === section ? 'page' : undefined}
+                  className={`mobile-menu-link${activeSection === section ? ' mobile-menu-link-active' : ''}`}
+                >
+                  <Icon size={19} aria-hidden="true" />
+                  <span>{label}</span>
+                  {count ? <span className="mobile-menu-count">{count}</span> : null}
+                  <ChevronRight size={15} aria-hidden="true" />
+                </a>
+              ))}
+            </div>
+          ))}
+        </nav>
       </section>
     </div>
   );
@@ -285,7 +404,18 @@ export function AppShell({
   openIncidents: number;
   mode: 'live' | 'demo';
 }) {
-  const [searchOpen, setSearchOpen] = useState(false);
+  const [activeDialog, setActiveDialog] = useState<'search' | 'navigation' | null>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+  const openDialog = useCallback((dialog: 'search' | 'navigation') => {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && !active.closest('.command-dialog, .mobile-menu-dialog')) {
+      openerRef.current = active;
+    }
+    setActiveDialog(dialog);
+  }, []);
+  const closeDialog = useCallback(() => {
+    setActiveDialog(null);
+  }, []);
   const workspaceItems = workspaceNavigation.map((item) =>
     item.section === 'approvals'
       ? { ...item, count: pendingApprovals }
@@ -299,21 +429,20 @@ export function AppShell({
     function handleKeyboard(event: KeyboardEvent) {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
-        setSearchOpen(true);
+        openDialog('search');
       }
-      if (event.key === 'Escape') setSearchOpen(false);
     }
     window.addEventListener('keydown', handleKeyboard);
     return () => {
       window.removeEventListener('keydown', handleKeyboard);
     };
-  }, []);
+  }, [openDialog]);
 
   return (
     <div className="app-shell">
-      <aside className="sidebar">
+      <aside className="sidebar" inert={activeDialog !== null}>
         <div className="sidebar-header">
-          <BrandMark />
+          <BrandMark clientId={selectedClientId} />
           <span className={`environment-badge ${mode === 'live' ? 'environment-live' : ''}`}>
             {mode === 'live' ? 'Live' : 'Demo'}
           </span>
@@ -344,44 +473,77 @@ export function AppShell({
           </div>
         </div>
       </aside>
-      <div className="workspace">
+      <div className="workspace" inert={activeDialog !== null}>
         <TopBar
           me={me}
           selectedClientId={selectedClientId}
+          activeSection={activeSection}
+          openIncidents={openIncidents}
           onSearchOpen={() => {
-            setSearchOpen(true);
+            openDialog('search');
           }}
         />
         <main id="main-content" className="main-content" tabIndex={-1}>
           {children}
         </main>
       </div>
-      <nav className="mobile-navigation" aria-label="Mobile navigation">
-        {workspaceItems.slice(0, 5).map(({ label, section, icon: Icon, count }) => {
-          const active = section === activeSection;
-          return (
-            <a
-              key={section}
-              className={active ? 'mobile-nav-item mobile-nav-item-active' : 'mobile-nav-item'}
-              href={buildHref(section, selectedClientId)}
-              aria-current={active ? 'page' : undefined}
-            >
-              <span className="mobile-nav-icon">
-                <Icon size={19} strokeWidth={1.9} aria-hidden="true" />
-                {count ? <span className="mobile-nav-count">{count}</span> : null}
-              </span>
-              <span>{label}</span>
-            </a>
-          );
-        })}
+      <nav
+        className="mobile-navigation"
+        aria-label="Mobile navigation"
+        inert={activeDialog !== null}
+      >
+        {workspaceItems
+          .filter((item) => mobileSections.includes(item.section))
+          .map(({ label, section, icon: Icon, count }) => {
+            const active = section === activeSection;
+            return (
+              <a
+                key={section}
+                className={active ? 'mobile-nav-item mobile-nav-item-active' : 'mobile-nav-item'}
+                href={buildHref(section, selectedClientId)}
+                aria-current={active ? 'page' : undefined}
+              >
+                <span className="mobile-nav-icon">
+                  <Icon size={19} strokeWidth={1.9} aria-hidden="true" />
+                  {count ? <span className="mobile-nav-count">{count}</span> : null}
+                </span>
+                <span>{label}</span>
+              </a>
+            );
+          })}
+        <button
+          className={`mobile-nav-item${!mobileSections.includes(activeSection) ? ' mobile-nav-item-active' : ''}`}
+          type="button"
+          aria-label="More workspace pages"
+          aria-haspopup="dialog"
+          aria-expanded={activeDialog === 'navigation'}
+          aria-controls={activeDialog === 'navigation' ? 'mobile-workspace-menu' : undefined}
+          onClick={() => {
+            openDialog('navigation');
+          }}
+        >
+          <span className="mobile-nav-icon">
+            <MoreHorizontal size={20} aria-hidden="true" />
+          </span>
+          <span>More</span>
+        </button>
       </nav>
-      {searchOpen ? (
+      {activeDialog === 'search' ? (
         <SearchDialog
           clientId={selectedClientId}
           clientLevel={clientLevel}
-          onClose={() => {
-            setSearchOpen(false);
-          }}
+          onClose={closeDialog}
+          openerRef={openerRef}
+        />
+      ) : null}
+      {activeDialog === 'navigation' ? (
+        <MobileNavigationDialog
+          clientId={selectedClientId}
+          activeSection={activeSection}
+          workspaceItems={workspaceItems}
+          clientLevel={clientLevel}
+          onClose={closeDialog}
+          openerRef={openerRef}
         />
       ) : null}
     </div>

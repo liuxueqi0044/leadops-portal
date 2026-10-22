@@ -12,6 +12,7 @@ import {
   humanize,
   statusTone,
 } from './primitives';
+import { useDialogFocus } from './use-dialog-focus';
 
 type Decision = 'approved' | 'rejected';
 
@@ -29,6 +30,7 @@ function ApprovalSheet({
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState<Decision | null>(null);
   const [error, setError] = useState('');
+  const dialogRef = useDialogFocus(onClose);
   const snapshot = approval.snapshot;
 
   async function decide(decision: Decision) {
@@ -75,8 +77,10 @@ function ApprovalSheet({
       }}
     >
       <section
+        ref={dialogRef}
         className="approval-sheet"
         role="dialog"
+        tabIndex={-1}
         aria-modal="true"
         aria-labelledby="approval-title"
       >

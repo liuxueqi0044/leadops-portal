@@ -128,9 +128,9 @@ export function ErrorState({ message }: { message: string }) {
 export function DemoNotice() {
   return (
     <div className="demo-notice" role="status">
-      <span>Preview mode</span>
+      <span>Demo workspace</span>
       <p>
-        This is deterministic sample data for product review. Sign in to work with live client data.
+        You’re viewing sample data. <Link href="/login">Sign in to your workspace</Link>
       </p>
     </div>
   );

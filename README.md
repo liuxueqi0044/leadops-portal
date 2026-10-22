@@ -13,6 +13,8 @@ It gives an automation agency one place to see what entered the system, what nee
 
 ![LeadOps overview dashboard](media/01-overview-dashboard.png)
 
+The responsive frontend was redesigned around readable operational data, an actionable overview, and complete mobile navigation. See the [design system](DESIGN.md) and [redesign validation notes](docs/frontend-redesign.md).
+
 | Leads                                  | Human approvals                           |
 | -------------------------------------- | ----------------------------------------- |
 | ![Lead management](media/03-leads.png) | ![Approval queue](media/04-approvals.png) |
