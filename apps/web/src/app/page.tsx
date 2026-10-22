@@ -48,6 +48,7 @@ export default async function Home({
           />
         ) : (
           <ProductRouter
+            key={data.selectedClient.id}
             section={section}
             data={data}
             leadId={typeof params.lead === 'string' ? params.lead : undefined}

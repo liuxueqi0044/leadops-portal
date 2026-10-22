@@ -1,317 +1,327 @@
-﻿import {
+import {
+  ArrowDownRight,
+  ArrowRight,
   CalendarDays,
   CheckCircle2,
+  ChevronRight,
   CircleAlert,
   Clock3,
-  Gauge,
   Inbox,
   Sparkles,
   UserCheck,
-  Workflow,
 } from 'lucide-react';
 import type { ProductData } from '@/lib/product/types';
 import {
   DemoNotice,
-  MetricTile,
-  PageHeader,
-  SectionHeader,
   StatusBadge,
   formatDateTime,
   formatPercent,
   humanize,
   statusTone,
 } from './primitives';
+import './overview.css';
+
+function percentOf(value: number, total: number): string {
+  return total > 0 ? formatPercent(value / total) : '—';
+}
+
+function initials(name: string): string {
+  return name
+    .trim()
+    .split(/\s+/u)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('')
+    .toUpperCase();
+}
 
 export function Overview({ data }: { data: ProductData }) {
   const { dashboard, selectedClient, approvals, incidents, workflowRuns, leads } = data;
+  const client = encodeURIComponent(selectedClient.id);
   const pending = approvals.filter((approval) => approval.status === 'pending');
   const openIncidents = incidents.filter((incident) => incident.status !== 'resolved');
-  const recentRuns = workflowRuns.slice(0, 4);
+  const recentRuns = workflowRuns.slice(0, 3);
+  const totalRuns = dashboard.workflowSuccess + dashboard.workflowFailure;
+  const attentionCount = pending.length + openIncidents.length;
   const funnel = [
-    { label: 'Leads received', value: dashboard.leadsReceived, ratio: 1 },
+    { label: 'Received leads', value: dashboard.leadsReceived },
+    { label: 'Qualified leads', value: dashboard.totalQualified },
+    { label: 'Approved decisions', value: dashboard.totalApproved },
+    { label: 'Booked appointments', value: dashboard.appointments },
+  ];
+  const largestTotal = Math.max(...funnel.map((stage) => stage.value));
+  const metrics = [
     {
-      label: 'AI qualified',
+      label: 'Leads received',
+      value: dashboard.leadsReceived,
+      context: 'Opportunities in your pipeline',
+      icon: Inbox,
+    },
+    {
+      label: 'Qualified leads',
       value: dashboard.totalQualified,
-      ratio: dashboard.leadsReceived ? dashboard.totalQualified / dashboard.leadsReceived : 0,
+      context: dashboard.leadsReceived
+        ? `${formatPercent(dashboard.qualificationRate)} of received leads currently qualified`
+        : 'No received leads yet',
+      icon: Sparkles,
     },
     {
-      label: 'Human approved',
+      label: 'Approved decisions',
       value: dashboard.totalApproved,
-      ratio: dashboard.leadsReceived ? dashboard.totalApproved / dashboard.leadsReceived : 0,
+      context:
+        dashboard.totalApproved + dashboard.totalRejected
+          ? `${formatPercent(dashboard.approvalConversion)} of completed decisions approved`
+          : 'No completed decisions yet',
+      icon: UserCheck,
     },
     {
-      label: 'Appointments',
+      label: 'Appointments booked',
       value: dashboard.appointments,
-      ratio: dashboard.leadsReceived ? dashboard.appointments / dashboard.leadsReceived : 0,
+      context: 'Recorded appointment bookings',
+      icon: CalendarDays,
     },
   ];
 
   return (
-    <div className="product-page overview-page">
-      <PageHeader
-        eyebrow={
-          <>
-            <span>{selectedClient.name}</span>
-            <span aria-hidden="true">/</span>
-            <StatusBadge tone={data.mode === 'live' ? 'success' : 'neutral'}>
-              {data.mode === 'live' ? 'Live workspace' : 'Sample data'}
-            </StatusBadge>
-          </>
-        }
-        title={`Good morning, ${data.me.user.name.split(/\s+/u)[0] ?? 'there'}.`}
-        description="A clear view of lead outcomes, pending decisions and automation health."
-        action={
-          <span className="date-button">
-            <CalendarDays size={16} aria-hidden="true" />
-            Last 7 days
-          </span>
-        }
-      />
+    <div className="product-page ops-overview">
+      <header className="ops-heading">
+        <div>
+          <div className="ops-eyebrow">Your workspace at a glance</div>
+          <h1>Workspace overview</h1>
+          <p>A clear view of your pipeline, and what needs you next.</p>
+        </div>
+        <span className="ops-period">
+          <CalendarDays size={16} aria-hidden="true" />
+          All-time snapshot
+        </span>
+      </header>
       {data.mode === 'demo' ? <DemoNotice /> : null}
 
-      <section
-        className={`operation-strip ${dashboard.workflowFailure || openIncidents.length ? 'operation-strip-warning' : ''}`}
-        aria-label="Operations summary"
-      >
-        <span className="operation-strip-icon">
-          {dashboard.workflowFailure || openIncidents.length ? (
-            <CircleAlert size={17} aria-hidden="true" />
-          ) : (
-            <CheckCircle2 size={17} aria-hidden="true" />
-          )}
-        </span>
-        <div>
-          <strong>
-            {dashboard.workflowFailure || openIncidents.length
-              ? 'Your outcomes are safe, but one workflow needs attention.'
-              : 'Your lead operation is healthy.'}
-          </strong>
-          <p>
-            {dashboard.workflowSuccess} successful runs · {dashboard.workflowFailure} failed ·{' '}
-            {openIncidents.length} open incident{openIncidents.length === 1 ? '' : 's'}
-          </p>
-        </div>
-        <a href={`/?section=automations&client=${selectedClient.id}`}>Inspect health</a>
+      <section className="ops-metrics" aria-label="Lead outcomes">
+        {metrics.map(({ label, value, context, icon: Icon }) => (
+          <article className="ops-metric" key={label}>
+            <div className="ops-metric-label">
+              <span>{label}</span>
+              <Icon size={16} aria-hidden="true" />
+            </div>
+            <strong>{value.toLocaleString('en')}</strong>
+            <p>{context}</p>
+          </article>
+        ))}
       </section>
 
-      <div className="overview-metrics">
-        <article className="metric-feature">
-          <div>
-            <span>Qualified leads</span>
-            <strong>{dashboard.totalQualified}</strong>
-            <p>{formatPercent(dashboard.qualificationRate)} of incoming leads</p>
+      <div className="ops-primary-grid">
+        <section className="ops-panel ops-funnel-panel">
+          <div className="ops-panel-heading">
+            <div>
+              <h2>Pipeline &amp; outcome totals</h2>
+              <p>Your lead operation, in perspective.</p>
+            </div>
+            <a className="ops-text-link" href={`/?section=leads&client=${client}`}>
+              View leads <ArrowRight size={15} aria-hidden="true" />
+            </a>
           </div>
-          <div
-            className="score-orbit"
-            aria-label={`Average lead score ${dashboard.avgScore?.toFixed(0) ?? 'not available'}`}
-          >
-            <span>{dashboard.avgScore?.toFixed(0) ?? '—'}</span>
-            <small>avg score</small>
-          </div>
-        </article>
-        <MetricTile
-          label="Approval conversion"
-          value={formatPercent(dashboard.approvalConversion)}
-          context={`${String(dashboard.totalApproved)} decisions approved`}
-          icon={UserCheck}
-          tone="brand"
-        />
-        <MetricTile
-          label="Appointments"
-          value={String(dashboard.appointments)}
-          context="Confirmed business outcomes"
-          icon={CalendarDays}
-          tone="success"
-        />
-        <MetricTile
-          label="Automation success"
-          value={formatPercent(
-            dashboard.workflowSuccess + dashboard.workflowFailure
-              ? dashboard.workflowSuccess / (dashboard.workflowSuccess + dashboard.workflowFailure)
-              : 0,
-          )}
-          context={`${String(dashboard.workflowSuccess + dashboard.workflowFailure)} workflow runs`}
-          icon={Workflow}
-        />
-      </div>
-
-      <div className="overview-grid overview-grid-primary">
-        <section className="panel">
-          <SectionHeader
-            title="Lead funnel"
-            description="How inquiries moved toward a booked appointment"
-            href={`/?section=leads&client=${selectedClient.id}`}
-            actionLabel="View leads"
-          />
-          <div className="funnel-list">
-            {funnel.map((stage) => (
-              <div className="funnel-row" key={stage.label}>
-                <div className="funnel-label-row">
-                  <span>{stage.label}</span>
-                  <span>
-                    <strong>{stage.value}</strong>
-                    <small>{formatPercent(stage.ratio)}</small>
+          <div className="ops-funnel">
+            {funnel.map((stage) => {
+              const ratio = largestTotal > 0 ? stage.value / largestTotal : 0;
+              return (
+                <div className="ops-funnel-row" key={stage.label}>
+                  <span className="ops-funnel-label">{stage.label}</span>
+                  <div className="ops-funnel-track" aria-hidden="true">
+                    <span
+                      style={{ width: `${String(Math.min(100, Math.max(0, ratio * 100)))}%` }}
+                    />
+                  </div>
+                  <span className="ops-funnel-value">
+                    <strong>{stage.value.toLocaleString('en')}</strong>
                   </span>
                 </div>
-                <div className="funnel-track">
-                  <span
-                    className="funnel-fill"
-                    style={{ width: `${String(Math.max(2, stage.ratio * 100))}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="funnel-insight">
-            <Sparkles size={16} aria-hidden="true" />
-            <p>
-              <strong>AI remains advisory.</strong> Qualification suggestions are separated from
-              confirmed human decisions and completed actions.
-            </p>
+              );
+            })}
+            <div className="ops-funnel-note">
+              <ArrowDownRight size={18} aria-hidden="true" />
+              {largestTotal > 0 ? (
+                <p>
+                  Lead totals reflect current status. Decisions and bookings can include multiple
+                  records per lead.
+                </p>
+              ) : (
+                <p>Your pipeline will take shape as leads arrive.</p>
+              )}
+            </div>
           </div>
         </section>
 
-        <section className="panel attention-panel">
-          <SectionHeader title="Needs attention" description="Ordered by business impact and age" />
-          <div className="attention-summary">
-            <strong>{pending.length + openIncidents.length}</strong>
-            <span>open items</span>
-            {pending[0] ? (
-              <StatusBadge tone="warning">
-                Oldest · {formatDateTime(pending.at(-1)?.createdAt)}
-              </StatusBadge>
-            ) : null}
+        <section className="ops-panel ops-queue-panel">
+          <div className="ops-panel-heading">
+            <div>
+              <h2>Needs your attention</h2>
+              <p>A few decisions keep things moving.</p>
+            </div>
+            <StatusBadge tone={attentionCount ? 'warning' : 'success'}>
+              {attentionCount} {attentionCount === 1 ? 'item' : 'items'}
+            </StatusBadge>
           </div>
-          <div className="attention-list">
+          <div className="ops-queue-list">
             {pending.slice(0, 2).map((approval) => (
               <a
-                className="attention-item"
-                href={`/?section=approvals&client=${selectedClient.id}&approval=${approval.id}`}
+                className="ops-queue-item"
+                href={`/?section=approvals&client=${client}&approval=${encodeURIComponent(approval.id)}`}
                 key={approval.id}
               >
-                <span className="attention-item-icon attention-icon-warning">
-                  <UserCheck size={17} aria-hidden="true" />
+                <span className="ops-queue-icon">
+                  <UserCheck size={18} aria-hidden="true" />
                 </span>
-                <span className="attention-item-copy">
-                  <strong>{approval.snapshot.contactName ?? 'Lead'} needs a decision</strong>
-                  <small>
+                <span className="ops-queue-copy">
+                  <strong>{approval.snapshot.contactName ?? 'Unnamed lead'}</strong>
+                  <span>
                     {approval.snapshot.suggestedNextAction ?? 'Review the qualification snapshot'}
-                  </small>
+                  </span>
+                  <small>Approval pending</small>
                 </span>
+                <ChevronRight className="ops-queue-chevron" size={17} aria-hidden="true" />
               </a>
             ))}
             {openIncidents.slice(0, 1).map((incident) => (
               <a
-                className="attention-item"
-                href={`/?section=incidents&client=${selectedClient.id}&incident=${incident.id}`}
+                className="ops-queue-item"
+                href={`/?section=incidents&client=${client}&incident=${encodeURIComponent(incident.id)}`}
                 key={incident.id}
               >
-                <span className="attention-item-icon attention-icon-danger">
-                  <CircleAlert size={17} aria-hidden="true" />
+                <span className="ops-queue-icon ops-queue-icon-incident">
+                  <CircleAlert size={18} aria-hidden="true" />
                 </span>
-                <span className="attention-item-copy">
+                <span className="ops-queue-copy">
                   <strong>{humanize(incident.category)}</strong>
-                  <small>{incident.errorSummary ?? 'Workflow issue requires review'}</small>
+                  <span>{incident.errorSummary ?? 'A workflow issue needs your review'}</span>
+                  <small className="ops-incident-label">Open incident</small>
                 </span>
+                <ChevronRight className="ops-queue-chevron" size={17} aria-hidden="true" />
               </a>
             ))}
-            {!pending.length && !openIncidents.length ? (
-              <div className="attention-clear">
-                <CheckCircle2 size={18} aria-hidden="true" />
-                <span>
-                  <strong>Nothing is waiting</strong>
-                  <small>Your team is caught up.</small>
-                </span>
+            {!attentionCount ? (
+              <div className="ops-empty ops-queue-clear">
+                <CheckCircle2 size={24} aria-hidden="true" />
+                <strong>You’re all caught up</strong>
+                <p>No pending approvals or open incidents in this view.</p>
               </div>
             ) : null}
           </div>
-          <a
-            className="primary-button attention-action"
-            href={`/?section=approvals&client=${selectedClient.id}`}
-          >
-            Open approval queue
-          </a>
+          <div className="ops-queue-footer">
+            <a href={`/?section=approvals&client=${client}`}>
+              Approvals <span>{pending.length}</span>
+              <ArrowRight size={14} aria-hidden="true" />
+            </a>
+            <a href={`/?section=incidents&client=${client}`}>
+              Incidents <span>{openIncidents.length}</span>
+              <ArrowRight size={14} aria-hidden="true" />
+            </a>
+          </div>
         </section>
       </div>
 
-      <div className="overview-grid overview-grid-secondary">
-        <section className="panel activity-panel">
-          <SectionHeader
-            title="Recent lead activity"
-            description="Decision-relevant updates, without workflow noise"
-            href={`/?section=leads&client=${selectedClient.id}`}
-            actionLabel="View all"
-          />
-          <ol className="activity-list">
-            {leads.slice(0, 4).map((lead) => (
-              <li key={lead.id}>
-                <span className={`timeline-icon timeline-${statusTone(lead.status)}`}>
-                  <Inbox size={16} aria-hidden="true" />
-                </span>
-                <div>
-                  <div className="timeline-title">
-                    <strong>
-                      {lead.contactName ?? 'Unnamed lead'} · {humanize(lead.status)}
-                    </strong>
-                    <time>{formatDateTime(lead.receivedAt)}</time>
-                  </div>
-                  <p>
-                    {lead.aiSuggestion?.summary ??
-                      `New ${lead.source} inquiry is ready for qualification.`}
-                  </p>
-                  <span className="timeline-meta">
-                    <Gauge size={13} aria-hidden="true" />
-                    {lead.score === null
-                      ? 'Awaiting score'
-                      : `AI score ${String(lead.score)} · suggestion only`}
-                  </span>
-                </div>
-              </li>
-            ))}
-          </ol>
-        </section>
-
-        <section className="panel health-panel">
-          <SectionHeader title="Automation health" description="Latest workflow runs" />
-          <div className="health-summary">
-            <span className="health-summary-icon">
-              <Workflow size={20} aria-hidden="true" />
-            </span>
+      <div className="ops-secondary-grid">
+        <section className="ops-panel ops-leads-panel">
+          <div className="ops-panel-heading">
             <div>
-              <strong>{dashboard.workflowFailure ? 'Stable with retries' : 'Healthy'}</strong>
-              <small>{dashboard.workflowSuccess} completed successfully</small>
+              <h2>Recent leads</h2>
+              <p>The latest people in your pipeline.</p>
             </div>
-            <StatusBadge tone={dashboard.workflowFailure ? 'warning' : 'success'}>
-              {dashboard.workflowFailure
-                ? `${String(dashboard.workflowFailure)} needs review`
-                : 'All operational'}
-            </StatusBadge>
+            <a className="ops-text-link" href={`/?section=leads&client=${client}`}>
+              View all <ArrowRight size={15} aria-hidden="true" />
+            </a>
           </div>
-          <div className="compact-list">
-            {recentRuns.map((run) => (
-              <div className="compact-row" key={run.id}>
-                <span>
-                  <strong>Lead intake</strong>
-                  <small>{run.externalRunId}</small>
-                </span>
-                <span className="compact-row-end">
-                  <StatusBadge tone={statusTone(run.status)}>{humanize(run.status)}</StatusBadge>
-                  <small>{formatDateTime(run.updatedAt)}</small>
-                </span>
-              </div>
-            ))}
-            {!recentRuns.length ? (
-              <div className="compact-empty">
-                <Clock3 size={16} aria-hidden="true" />
-                No workflow runs yet
+          <div className="ops-lead-labels" aria-hidden="true">
+            <span>Contact / source</span>
+            <span>Status</span>
+            <span>AI score</span>
+          </div>
+          <div className="ops-lead-list">
+            {leads.slice(0, 4).map((lead) => {
+              const name = lead.contactName ?? 'Unnamed lead';
+              return (
+                <a
+                  className="ops-lead-row"
+                  href={`/?section=leads&client=${client}&lead=${encodeURIComponent(lead.id)}`}
+                  key={lead.id}
+                >
+                  <span className="ops-lead-person">
+                    <span className="ops-avatar" aria-hidden="true">
+                      {initials(name)}
+                    </span>
+                    <span>
+                      <strong>{name}</strong>
+                      <small>{humanize(lead.source)}</small>
+                    </span>
+                  </span>
+                  <StatusBadge tone={statusTone(lead.status)}>{humanize(lead.status)}</StatusBadge>
+                  <span
+                    className="ops-lead-score"
+                    aria-label={`AI score: ${lead.score === null ? 'not available' : String(lead.score)}`}
+                  >
+                    {lead.score ?? '—'}
+                    <ChevronRight size={15} aria-hidden="true" />
+                  </span>
+                </a>
+              );
+            })}
+            {!leads.length ? (
+              <div className="ops-empty">
+                <Inbox size={22} aria-hidden="true" />
+                <p>No leads received yet.</p>
               </div>
             ) : null}
           </div>
-          <a
-            className="secondary-button health-action"
-            href={`/?section=automations&client=${selectedClient.id}`}
-          >
-            Inspect workflow health
+          <div className="ops-advisory">
+            <Sparkles size={14} aria-hidden="true" /> AI scores guide review. People make the
+            decisions.
+          </div>
+        </section>
+
+        <section className="ops-panel ops-health-panel">
+          <div className="ops-panel-heading">
+            <div>
+              <h2>Automation health</h2>
+              <p>Your latest workflow activity.</p>
+            </div>
+            <span
+              className={`ops-health-dot ${dashboard.workflowFailure ? 'ops-health-dot-warning' : ''}`}
+              aria-hidden="true"
+            />
+          </div>
+          <div className="ops-health-metrics">
+            <div>
+              <strong>{percentOf(dashboard.workflowSuccess, totalRuns)}</strong>
+              <span>success rate</span>
+            </div>
+            <div>
+              <strong>{dashboard.workflowSuccess}</strong>
+              <span>succeeded</span>
+            </div>
+            <div className={dashboard.workflowFailure ? 'ops-failed-count' : ''}>
+              <strong>{dashboard.workflowFailure}</strong>
+              <span>failed</span>
+            </div>
+          </div>
+          <div className="ops-runs">
+            {recentRuns.map((run) => (
+              <div className="ops-run" key={run.id}>
+                <span>
+                  <strong>{run.externalRunId}</strong>
+                  <small>{formatDateTime(run.updatedAt)}</small>
+                </span>
+                <StatusBadge tone={statusTone(run.status)}>{humanize(run.status)}</StatusBadge>
+              </div>
+            ))}
+            {!recentRuns.length ? (
+              <div className="ops-empty">
+                <Clock3 size={20} aria-hidden="true" />
+                <p>No workflow runs yet.</p>
+              </div>
+            ) : null}
+          </div>
+          <a className="ops-health-footer" href={`/?section=automations&client=${client}`}>
+            View workflow health <ArrowRight size={15} aria-hidden="true" />
           </a>
         </section>
       </div>
